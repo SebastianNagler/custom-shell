@@ -10,3 +10,4 @@ jobs:
       - uses: actions/checkout@v5
       - run: docker build -t custom-unix-shell .
       - run: echo "exit" | docker run -i custom-unix-shell
+      - run: echo "cat shell.cpp | wc -l" | docker run -i custom-unix-shell

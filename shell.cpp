@@ -72,3 +72,124 @@ pid_t spawn(const char *path, char *argv[], int in_fd, int out_fd)
     }
     return pid;
 }
+
+int main()
+{
+    signal(SIGINT, SIG_IGN);
+
+    std::string line;
+    char cwd[PATH_MAX];
+    while (true)
+    {
+        if (getcwd(cwd, sizeof(cwd)))
+            std::cout << cwd << "$ ";
+        else
+            std::cout << "? $ ";
+        std::cout << std::flush;
+
+        if (!std::getline(std::cin, line))
+            break;
+
+        std::vector<std::string> tokens = tokenize(line);
+        if (tokens.empty())
+            continue;
+
+        if (tokens[0] == "exit")
+            break;
+        if (tokens[0] == "cd")
+        {
+            const char *dir = nullptr;
+            if (tokens.size() >= 2)
+                dir = tokens[1].c_str();
+            else
+                dir = getenv("HOME");
+            if (!dir)
+                dir = "/";
+            if (chdir(dir) != 0)
+                std::cerr << "cd: " << strerror(errno) << "\n";
+            continue;
+        }
+
+        std::vector<std::vector<std::string>> simple_cmds;
+        std::vector<std::string> cur;
+        for (std::string &t : tokens)
+        {
+            if (t == "|")
+            {
+                if (cur.empty())
+                {
+                    std::cerr << "Pipe operator located at start of line or immediately preceded by other pipe operator\n";
+                    cur.clear();
+                    break;
+                }
+                simple_cmds.push_back(cur);
+                cur.clear();
+            }
+            else
+                cur.push_back(t);
+        }
+        if (!cur.empty())
+            simple_cmds.push_back(cur);
+        if (simple_cmds.empty())
+            continue; // in case "|" appears at the beginning of the entered text
+
+        int prev_fd = STDIN_FILENO;
+        std::vector<pid_t> children;
+        for (size_t i = 0; i < simple_cmds.size(); ++i)
+        {
+            int pipefd[2] = {-1, -1};
+            if (i + 1 < simple_cmds.size())
+            {
+                if (pipe(pipefd) != 0)
+                {
+                    std::cerr << "Pipe error\n";
+                    break;
+                }
+            }
+
+            std::string cmd = simple_cmds[i][0];
+            std::string full = find_cmd(cmd);
+            if (full.empty())
+            {
+                std::cerr << cmd << ": Command not found\n";
+                if (pipefd[0] != -1)
+                {
+                    close(pipefd[0]);
+                    close(pipefd[1]);
+                }
+                break;
+            }
+
+            std::vector<char *> args;
+            for (const std::string &s : simple_cmds[i])
+                args.push_back(const_cast<char *>(s.c_str()));
+            args.push_back(nullptr);
+
+            pid_t pid = spawn(full.c_str(), args.data(), prev_fd, (pipefd[1] == -1 ? STDOUT_FILENO : pipefd[1]));
+            if (pid < 0)
+            {
+                std::cerr << "fork() returned negative PID\n";
+            }
+            else
+                children.push_back(pid);
+
+            if (prev_fd != STDIN_FILENO)
+                close(prev_fd);
+            if (pipefd[1] != -1)
+                close(pipefd[1]);
+            prev_fd = (pipefd[0] != -1 ? pipefd[0] : STDIN_FILENO);
+        }
+
+        if (prev_fd != STDIN_FILENO)
+            close(prev_fd);
+
+        for (pid_t c : children)
+        {
+            int status;
+            waitpid(c, &status, 0);
+        }
+    }
+
+    std::cout << "\n";
+    return 0;
+}

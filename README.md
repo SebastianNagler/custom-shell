@@ -10,6 +10,7 @@ A command-line interpreter implemented in C++. This project was developed to dem
   * `cd`: With support for absolute paths, relative paths, and default fallback to `$HOME`.
   * `exit`
 * **Signal Handling:** Intercepting `SIGINT` (Ctrl+C) to prevent termination of the parent shell.
+* **Continuous Integration:** Automated simple shell tests for pushes.
 
 ## Technical Implementation
 

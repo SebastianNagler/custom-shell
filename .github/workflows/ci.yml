@@ -1,0 +1,12 @@
+name: Build and Test UNIX Shell
+
+on: [push]
+
+jobs:
+  build-and-test:
+    timeout-minutes: 1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker build -t custom-unix-shell .
+      - run: echo "exit" | docker run -i custom-unix-shell

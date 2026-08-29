@@ -38,7 +38,8 @@ std::string find_cmd(const std::string &cmd)
         std::string dir = path.substr(start, (colon == std::string::npos ? path.size() : colon) - start);
         std::string full = dir + "/" + cmd;
         struct stat st;
-        if (stat(full.c_str(), &st) == 0)
+        if (stat(full.c_str(), &st) == 0 && S_ISREG(st.st_mode) &&
+            access(full.c_str(), X_OK) == 0)
             return full;
         if (colon == std::string::npos)
             break;
@@ -47,7 +48,7 @@ std::string find_cmd(const std::string &cmd)
     return std::string();
 }
 
-pid_t spawn(const char *path, char *argv[], int in_fd, int out_fd)
+pid_t spawn(const char *path, char *argv[], int in_fd, int out_fd, int close_fd)
 {
     pid_t pid = fork();
     if (pid < 0)
@@ -55,6 +56,8 @@ pid_t spawn(const char *path, char *argv[], int in_fd, int out_fd)
     if (pid == 0)
     {
         signal(SIGINT, SIG_DFL);
+        if (close_fd != -1)
+            close(close_fd);
         if (in_fd != STDIN_FILENO)
         {
             dup2(in_fd, STDIN_FILENO);
@@ -119,6 +122,7 @@ int main()
                 if (cur.empty())
                 {
                     std::cerr << "Pipe operator located at start of line or immediately preceded by other pipe operator\n";
+                    simple_cmds.clear();
                     cur.clear();
                     break;
                 }
@@ -165,7 +169,7 @@ int main()
                 args.push_back(const_cast<char *>(s.c_str()));
             args.push_back(nullptr);
 
-            pid_t pid = spawn(full.c_str(), args.data(), prev_fd, (pipefd[1] == -1 ? STDOUT_FILENO : pipefd[1]));
+            pid_t pid = spawn(full.c_str(), args.data(), prev_fd, (pipefd[1] == -1 ? STDOUT_FILENO : pipefd[1]), pipefd[0]);
             if (pid < 0)
             {
                 std::cerr << "fork() returned negative PID\n";
